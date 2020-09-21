@@ -17,3 +17,6 @@ Consume jobs:
 
     c, err := beanstalk.Dial("tcp", "127.0.0.1:11300")
     id, body, err := c.Reserve(5 * time.Second)
+
+## States flow
+![](http://images.yinzige.com/states-flow.png)
