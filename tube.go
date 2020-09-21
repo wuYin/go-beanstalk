@@ -6,6 +6,7 @@ import (
 
 // Tube represents tube Name on the server connected to by Conn.
 // It has methods for commands that operate on a single tube.
+// NOTE: Tube is named Conn
 type Tube struct {
 	Conn *Conn
 	Name string
@@ -76,6 +77,7 @@ func (t *Tube) PeekBuried() (id uint64, body []byte, err error) {
 // Kick takes up to bound jobs from the holding area and moves them into
 // the ready queue, then returns the number of jobs moved. Jobs will be
 // taken in the order in which they were last buried.
+// NOTE: kick bound from buried queue
 func (t *Tube) Kick(bound int) (n int, err error) {
 	r, err := t.Conn.cmd(t, nil, nil, "kick", bound)
 	if err != nil {

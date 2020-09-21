@@ -41,6 +41,8 @@ func parseList(dat []byte) []string {
 	return l
 }
 
+// NOTE: parse string based on size-tail
+// example: `str 128`...
 func parseSize(s string) (string, int, error) {
 	i := strings.LastIndex(s, " ")
 	if i == -1 {

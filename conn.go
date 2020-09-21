@@ -40,10 +40,10 @@ var (
 func NewConn(conn io.ReadWriteCloser) *Conn {
 	c := new(Conn)
 	c.c = textproto.NewConn(conn)
-	c.Tube = *NewTube(c, "default")
-	c.TubeSet = *NewTubeSet(c, "default")
-	c.used = "default"
-	c.watched = map[string]bool{"default": true}
+	c.Tube = *NewTube(c, "default")              // NOTE: new conn init as `default` tube
+	c.TubeSet = *NewTubeSet(c, "default")        // NOTE: init as `default` tubeSet
+	c.used = "default"                           // NOTE: the current tube
+	c.watched = map[string]bool{"default": true} // NOTE: using tubes
 	return c
 }
 
@@ -76,16 +76,16 @@ func (c *Conn) cmd(t *Tube, ts *TubeSet, body []byte, op string, args ...interfa
 	r := req{c.c.Next(), op}
 	c.c.StartRequest(r.id)
 	defer c.c.EndRequest(r.id)
-	err := c.adjustTubes(t, ts)
+	err := c.adjustTubes(t, ts) // NOTE: 1. refresh local tubes and notify server
 	if err != nil {
 		return req{}, err
 	}
 	if body != nil {
 		args = append(args, len(body))
 	}
-	c.printLine(op, args...)
+	c.printLine(op, args...) // NOTE: 2. write <args, bodySize>
 	if body != nil {
-		c.c.W.Write(body)
+		c.c.W.Write(body) // NOTE: 3. write <body, crnl>
 		c.c.W.Write(crnl)
 	}
 	err = c.c.W.Flush()
@@ -95,6 +95,8 @@ func (c *Conn) cmd(t *Tube, ts *TubeSet, body []byte, op string, args ...interfa
 	return r, nil
 }
 
+// NOTE: `use` 			  refresh the current tube
+// NOTE: `watch`/`ignore` refresh watched tubes, filter unsubscribe tubes
 func (c *Conn) adjustTubes(t *Tube, ts *TubeSet) error {
 	if t != nil && t.Name != c.used {
 		if err := checkName(t.Name); err != nil {
@@ -126,6 +128,7 @@ func (c *Conn) adjustTubes(t *Tube, ts *TubeSet) error {
 }
 
 // does not flush
+// NOTE: write <cmd, argsSplitBySpace, crnl>
 func (c *Conn) printLine(cmd string, args ...interface{}) {
 	io.WriteString(c.c.W, cmd)
 	for _, a := range args {
@@ -139,6 +142,7 @@ func (c *Conn) readResp(r req, readBody bool, f string, a ...interface{}) (body 
 	c.c.StartResponse(r.id)
 	defer c.c.EndResponse(r.id)
 	line, err := c.c.ReadLine()
+	// NOTE: 1. skip watch/ignore until read header
 	for strings.HasPrefix(line, "WATCHING ") || strings.HasPrefix(line, "USING ") {
 		line, err = c.c.ReadLine()
 	}
@@ -148,10 +152,12 @@ func (c *Conn) readResp(r req, readBody bool, f string, a ...interface{}) (body 
 	toScan := line
 	if readBody {
 		var size int
+		// NOTE: 2. read size-header
 		toScan, size, err = parseSize(toScan)
 		if err != nil {
 			return nil, ConnError{c, r.op, err}
 		}
+		// NOTE: 3. read payload body
 		body = make([]byte, size+2) // include trailing CR NL
 		_, err = io.ReadFull(c.c.R, body)
 		if err != nil {
@@ -160,6 +166,7 @@ func (c *Conn) readResp(r req, readBody bool, f string, a ...interface{}) (body 
 		body = body[:size] // exclude trailing CR NL
 	}
 
+	// NOTE: 4. extract args from header based on format
 	err = scan(toScan, f, a...)
 	if err != nil {
 		return nil, ConnError{c, r.op, err}
@@ -181,6 +188,7 @@ func (c *Conn) Delete(id uint64) error {
 // set the priority of the given job to pri, remove it from the list of
 // jobs reserved by c, wait delay seconds, then place the job in the
 // ready queue, which makes it available for reservation by any client.
+// NOTE: will refresh priority, delay
 func (c *Conn) Release(id uint64, pri uint32, delay time.Duration) error {
 	r, err := c.cmd(nil, nil, nil, "release", id, pri, dur(delay))
 	if err != nil {
@@ -193,6 +201,7 @@ func (c *Conn) Release(id uint64, pri uint32, delay time.Duration) error {
 // Bury places the given job in a holding area in the job's tube and
 // sets its priority to pri. The job will not be scheduled again until it
 // has been kicked; see also the documentation of Kick.
+// NOTE: will refresh priority
 func (c *Conn) Bury(id uint64, pri uint32) error {
 	r, err := c.cmd(nil, nil, nil, "bury", id, pri)
 	if err != nil {
@@ -204,6 +213,7 @@ func (c *Conn) Bury(id uint64, pri uint32) error {
 
 // KickJob places the given job to the ready queue of the same tube where it currently belongs
 // when the given job id exists and is in a buried or delayed state.
+// NOTE: place to origin tube, also can be kick from delayed state
 func (c *Conn) KickJob(id uint64) error {
 	r, err := c.cmd(nil, nil, nil, "kick-job", id)
 	if err != nil {
@@ -226,6 +236,7 @@ func (c *Conn) Touch(id uint64) error {
 }
 
 // Peek gets a copy of the specified job from the server.
+// NOTE: peek not like Kick, will not set job to Ready
 func (c *Conn) Peek(id uint64) (body []byte, err error) {
 	r, err := c.cmd(nil, nil, nil, "peek", id)
 	if err != nil {
@@ -266,6 +277,7 @@ func (c *Conn) ListTubes() ([]string, error) {
 }
 
 func scan(input, format string, a ...interface{}) error {
+	// NOTE: if `a` is empty, `input` must equal with `f`
 	_, err := fmt.Sscanf(input, format, a...)
 	if err != nil {
 		return findRespError(input)
