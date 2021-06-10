@@ -5,7 +5,7 @@ import "errors"
 // ConnError records an error message from the server and the operation
 // and connection that caused it.
 type ConnError struct {
-	Conn *Conn
+	// Conn *Conn
 	Op   string
 	Err  error
 }

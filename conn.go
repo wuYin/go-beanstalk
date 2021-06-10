@@ -97,7 +97,7 @@ func (c *Conn) cmd(t *Tube, ts *TubeSet, body []byte, op string, args ...interfa
 	}
 	err = c.c.W.Flush()
 	if err != nil {
-		return req{}, ConnError{c, op, err}
+		return req{}, ConnError{op, err}
 	}
 	return r, nil
 }
@@ -132,7 +132,7 @@ func (c *Conn) adjustTubes(t *Tube, ts *TubeSet) error {
 		// it's ok to return NOT_IGNORED here, like server did
 		// then simply ignore the NOT_IGNORED error when reading the server response
 		if len(c.watched) == 0 {
-			return ConnError{c, "ignore", ErrNotIgnored}
+			return ConnError{"ignore", ErrNotIgnored}
 		}
 	}
 	return nil
@@ -156,26 +156,26 @@ func (c *Conn) readResp(r req, readBody bool, f string, a ...interface{}) (body 
 		line, err = c.c.ReadLine()
 	}
 	if err != nil {
-		return nil, ConnError{c, r.op, err}
+		return nil, ConnError{r.op, err}
 	}
 	toScan := line
 	if readBody {
 		var size int
 		toScan, size, err = parseSize(toScan)
 		if err != nil {
-			return nil, ConnError{c, r.op, err}
+			return nil, ConnError{r.op, err}
 		}
 		body = make([]byte, size+2) // include trailing CR NL
 		_, err = io.ReadFull(c.c.R, body)
 		if err != nil {
-			return nil, ConnError{c, r.op, err}
+			return nil, ConnError{r.op, err}
 		}
 		body = body[:size] // exclude trailing CR NL
 	}
 
 	err = scan(toScan, f, a...)
 	if err != nil {
-		return nil, ConnError{c, r.op, err}
+		return nil, ConnError{r.op, err}
 	}
 	return body, nil
 }
